@@ -85,8 +85,8 @@ t_cmd *parser(int argc, char **argv, int i)
 	pipe = (argv[i] && !strcmp(argv[i], "|")) ? 1 : 0;
 	cmd = cmd_new(args, pipe);
 	cmdaddback(&cmd, parser(argc, argv, i));
-	if (cmd->next == NULL)
-		return (cmd);
+//	if (cmd->next == NULL)
+//		return (cmd);
 	return (cmd);
 }
 
@@ -114,6 +114,8 @@ int bin(char **args, char **envp)
 	pid_t child;
 	int status = 0;
 
+	if (!strcmp(args[0], "cd"))
+		return(cd(args));
 	child = fork();
 	if (child < 0)
 		return (error(1, 0,0));
@@ -169,18 +171,12 @@ int main(int argc, char **argv, char **envp)
 	head = cmd;
 	while (cmd && cmd->args[0])
 	{
-		if (!strcmp(cmd->args[0], "cd"))
-			status = cd(cmd->args);
+		if (cmd->pipe)
+			status = pipe_fork(cmd->args, envp);
 		else
 		{
-			if (cmd->pipe)
-				status = pipe_fork(cmd->args, envp);
-			else
-			{
-				status = bin(cmd->args, envp);
-				dup2(fd_in, 0);
-			}
-
+			status = bin(cmd->args, envp);
+			dup2(fd_in, 0);
 		}
 		cmd = cmd->next;
 	}
