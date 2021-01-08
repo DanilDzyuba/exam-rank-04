@@ -7,7 +7,9 @@ typedef struct	 s_cmd
 {
 	char		 **args;
 	int			 pipe;
+	int			 fd[2];
 	struct s_cmd *next;
+	struct s_cmd *prev;
 }				 t_cmd;
 
 int ft_strlen(char *s)
@@ -49,6 +51,7 @@ t_cmd *cmd_new(char **args, int pipe)
 	result->args = args;
 	result->pipe = pipe;
 	result->next = NULL;
+	result->next = NULL;
 	return (result);
 }
 
@@ -63,6 +66,7 @@ void	cmdaddback(t_cmd **cmd, t_cmd *new)
 		while ((*cmd)->next)
 			*cmd = (*cmd)->next;
 		(*cmd)->next = new;
+		new->prev = *cmd;
 	}
 }
 
@@ -159,30 +163,57 @@ int pipe_fork(char **args, char **envp)
 	return (WEXITSTATUS(status));
 }
 
+void	exec(t_cmd *cmd, char **envp)
+{
+	pid_t	child;
+	int res;
+
+	if (cmd->pipe)
+		if (pipe(cmd->fd) < 0)
+			error(1, 0, 0);
+	child = fork();
+	if (child < 0)
+		error(1, 0, 0);
+	else if (child == 0)
+	{
+		if (cmd->pipe && dup2(cmd->fd[1], 1) < 0)
+			error(1, 0, 0);
+		if (cmd->prev && cmd->prev->pipe && dup2(cmd->prev->fd[0], 0) < 0)
+			error(1, 0, 0);
+		res = execve(cmd->args[0], cmd->args, envp);
+		if (res == -1)
+			error(0, "error: cannot execute ", cmd->args[0]);
+		exit(res);
+	}
+	else
+	{
+		waitpid(child, NULL, 0);
+		if (cmd->pipe)
+		{
+			close(cmd->fd[1]);
+			if (!cmd->next)
+				close(cmd->fd[0]);
+		}
+		if (cmd->prev && cmd->prev->pipe)
+			close(cmd->prev->fd[0]);
+	}
+}
+
 int main(int argc, char **argv, char **envp)
 {
 	t_cmd	*cmd;
-	t_cmd	*head;
-	int fd_in;
-	int status = 0;
 
-	fd_in = dup(0);
 	cmd = parser(argc, argv, 0);
-	head = cmd;
 	while (cmd && cmd->args[0])
 	{
-		if (cmd->pipe)
-			status = pipe_fork(cmd->args, envp);
+		if (!strcmp(cmd->args[0], "cd"))
+			cd(cmd->args);
 		else
-		{
-			status = bin(cmd->args, envp);
-			dup2(fd_in, 0);
-		}
+			exec(cmd, envp);
 		cmd = cmd->next;
 	}
-	close(fd_in);
-	//free_cmd(&head);
+
 	while(1)
 		sleep(1);
-	return (status);
+	return (1);
 }
